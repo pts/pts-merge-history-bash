@@ -68,16 +68,18 @@ function hook_at_debug() {
   test "$COMP_LINE" && return  # Within the completer.
   trap '' DEBUG  # Uninstall debug trap.
   test "$HISTFILE_MRG" || return
-  # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
-  local HISTTIMEFORMAT=' '
-  # TODO(pts): Don't save if nothing changed (i.e. `history -1` prints
-  # the same sequence number as before).
-  local TMPDIR="${TMPDIR:-/tmp}"
-  local HISTFILE="$TMPDIR/whistory.$UID.$$"
-  local MHISTFILE="$TMPDIR/mhistory.$UID.$$"
-  history -w  # Write to /tmp/whistory.$$ .
-  _mrg_merge_ts_history "$HISTFILE_MRG" "$HISTFILE" >"$MHISTFILE"
-  command mv -f -- "$MHISTFILE" "$HISTFILE_MRG"
+  if : >>"$HISTFILE_MRG"; then
+    # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
+    local HISTTIMEFORMAT=' '
+    # TODO(pts): Don't save if nothing changed (i.e. `history -1` prints
+    # the same sequence number as before).
+    local TMPDIR="${TMPDIR:-/tmp}"
+    local HISTFILE="$TMPDIR/whistory.$UID.$$"
+    local MHISTFILE="$TMPDIR/mhistory.$UID.$$"
+    history -w  # Write to /tmp/whistory.$$ .
+    _mrg_merge_ts_history "$HISTFILE_MRG" "$HISTFILE" >"$MHISTFILE"
+    command mv -f -- "$MHISTFILE" "$HISTFILE_MRG"
+  fi
 }
 
 # Set these both so hook_at_debug gets called in a subshell.
