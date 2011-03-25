@@ -62,8 +62,6 @@ function _rdh() {
   history -r  # Append the contents of $HISTFILE to the in-memory history.
 }
 
-INSTALL_DEBUG_TRAP=
-#INSTALL_DEBUG_TRAP='trap hook_at_debug DEBUG'
 export -n HISTTIMEFORMAT HISTFILE HISTFILE_MRG
 unset HISTFILE  # No history file by default, equivalent to HISTFILE="".
 unset HISTTIMEFORMAT
