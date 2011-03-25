@@ -9,8 +9,13 @@
 # Installation:
 #
 # * Copy this file to ~/merge_history.bash .
+# * Run this: touch ~/.merged_bash_history
 # * Put (append) this to your ~/.bashrc: source "$HOME"/merge_history.bash
-# * Set HISTSIZE and HISTFILESIZE to large enough values.
+# * Set HISTSIZE and HISTFILESIZE to large enough values in your ~/.bashrc .
+# * Close all your terminal windows (and SSH connections) and open new ones
+#   to make the changes take effect.
+# * If you want your old shell history to be reused, please copy
+#   ~/.bash_history to ~/.merged_bash_history .
 #
 # zsh equivalent of this command:
 #
@@ -20,7 +25,8 @@ MRG_DONEI=":$SHELLOPTS:"
 if test "${MRG_DONEI#*:history:}" != "$PTS_DONEI" &&
    (test "${BASH_VERSION#[5-9].}" != "$BASH_VERSION" ||
     test "${BASH_VERSION#4.[1-9].}" != "$BASH_VERSION") &&
-   test "$HOME"; then
+   test "$HOME" &&
+   test -f "$HOME/.merged_bash_history"; then
 
 # Merge the timestamped .bash_history files specified in $@ , remove
 # duplicates, print the results to stdout.
