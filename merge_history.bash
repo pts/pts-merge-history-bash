@@ -22,9 +22,9 @@
 #   setopt hist_ignore_dups share_history inc_append_history extended_history
 
 MRG_DONEI=":$SHELLOPTS:"
-if test "${MRG_DONEI#*:history:}" != "$PTS_DONEI" &&
+if test "${MRG_DONEI#*:history:}" != "$MRG_DONEI" &&
    (test "${BASH_VERSION#[5-9].}" != "$BASH_VERSION" ||
-    test "${BASH_VERSION#4.[1-9].}" != "$BASH_VERSION") &&
+    test "${BASH_VERSION#4.[0-9].}" != "$BASH_VERSION") &&
    test "$HOME" &&
    test -f "$HOME/.merged_bash_history"; then
 
@@ -63,6 +63,7 @@ function _rdh() {
 }
 
 export -n HISTTIMEFORMAT HISTFILE HISTFILE_MRG
+shopt -u histappend
 unset HISTFILE  # No history file by default, equivalent to HISTFILE="".
 unset HISTTIMEFORMAT
 HISTFILE_MRG="$HOME/.merged_bash_history"
