@@ -53,7 +53,7 @@ function _mrg_merge_ts_history() {
 }
 
 # Read history from $HISTFILE_MRG, 
-function _rdh() {
+function _mrg_rdh() {
   test "$HISTFILE_MRG" || return
   local HISTFILE="$HISTFILE_MRG"
   # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
@@ -69,10 +69,22 @@ unset HISTTIMEFORMAT
 HISTFILE_MRG="$HOME/.merged_bash_history"
 history -c  # Discard the current history, whatever it was.
 
-function hook_at_debug() {
+# Called in `trap _mrg_ec DEBUG' in `extdebug' mode, before each shell
+# command to be executed.
+function _mrg_ec() {
   test "$COMP_LINE" && return  # Within the completer.
   trap '' DEBUG  # Uninstall debug trap.
   test "$HISTFILE_MRG" || return
+
+  if [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* ]] && test "$MC_TMPDIR"; then
+    # Midnight Commander (mc) is trying to override $PROMPT_COMMAND with its
+    # pwd saving and `kill -STOP $$'. We do it,
+    eval "$BASH_COMMAND"  # Set $PROMPT_COMMAND as mc wanted it.
+    _mrg_install_debug_hook  # Prepend our commands to $PROPT_COMMAND.
+    trap _mrg_ec DEBUG
+    return 1  # Don't run the original $BASH_COMMAND.
+  fi
+
   if : >>"$HISTFILE_MRG"; then
     # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
     local HISTTIMEFORMAT=' '
@@ -87,14 +99,22 @@ function hook_at_debug() {
   fi
 }
 
+function _mrg_install_debug_hook() {
+  # We want to run `trap _mrg_ec DEBUG' in $PROMPT_COMMAND as late as
+  # possible so that the debug hook (_mrg_ec) won't be executed on the rest
+  # of $PROMPT_COMMAND, but it will be executed at the user command.
+  PROMPT_COMMAND="trap '' DEBUG; _mrg_rdh; $PROMPT_COMMAND
+trap _mrg_ec DEBUG"
+}
+
 # Set these both so hook_at_debug gets called in a subshell.
 set -o functrace > /dev/null 2>&1
 shopt -s extdebug > /dev/null 2>&1
 
 # As a side effect, we install our own debug hook. We wouldn't have to do
-# that if bash had support for `preexec' (executed just after a command has
-# been read and is about to be executed). in zsh.
-PROMPT_COMMAND="trap '' DEBUG; _rdh; trap hook_at_debug DEBUG; $PROMPT_COMMAND"
+# that if bash had support for zsh's `preexec' hook, which is executed just
+# after a command has been read and is about to be executed).
+_mrg_install_debug_hook
 
 fi  # End of the file's if guard.
 unset MRG_DONEI
