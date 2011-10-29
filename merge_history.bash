@@ -32,29 +32,156 @@ if test "${MRG_DONEI#*:history:}" != "$MRG_DONEI" &&
    test "$HOME" &&
    test -f "$HOME/.merged_bash_history"; then
 
-# Merge the timestamped .bash_history files specified in $@ , remove
-# duplicates (where both timestamp and command name are exactly the same),
-# print the results to stdout.
+# Merge the timestamped .bash_history file on STDIN to $1. The output file
+# is sorted by (timestamp, command), and duplicate (timestamp, command) tuples
+# are removed.
+#
+# The implementation is very fast in the 2 most common cases:
+#
+# * Appending a few new entries.
+# * Not changing it at all, because it's already up-to-date.
 function _mrg_merge_ts_history() {
-  PERL_BADLANG=x perl -wne '
-    use integer;
+  PERL_BADLANG=x perl -e '
+    use_integer;
     use strict;
-    use vars qw($prefix @lines);
-    if (/^#(\d+)\n/) {
-      $prefix = sprintf("%030d ", $1);
-    } else {
-      chomp; $prefix = sprintf("%030d ", time) if !defined $prefix;
-      push @lines, "$prefix$_\n"; undef $prefix;
+    my $now = time;
+    sub readhist($) {
+      my $F = $_[0];
+      my @lines;
+      my $prefix;
+      my $line;
+      while (defined($line = <$F>)) {
+        $line .= "\n" if substr($line, -1) ne "\n";
+        if ($line =~ /^#(\d+)\n/) {
+          $prefix = sprintf("%022d ", $1);
+        } else {
+          chomp; $prefix = sprintf("%022d ", $now) if !defined $prefix;
+          push @lines, $prefix . $line; undef $prefix;
+        }
+      }
+      \@lines
     }
-    END {
+    sub sortuniq($) {
+      my @lines;
       my $prev = "";
-      for (sort @lines) {
-        s@^(\d+) @@; my $ts = $1 + 0; my $cur = "#$ts\n$_";
-        print $cur if $cur ne $prev;
+      for my $line (sort @{$_[0]}) {
+        die if $line !~ m@^(\d+) (.*)@s;
+        my $ts = $1 + 0; my $cur = "#$ts\n$2";
+        push @lines, $cur if $cur ne $prev;
         $prev = $cur;
       }
+      \@lines
     }
-  ' -- "$@"
+    # Strip the prefix of double-lines from $_[0] common with $_[1];
+    sub strip_common_prefix2($$) {
+      my $i = 0;
+      my $j;
+      my $k;
+      while (($j = index($_[0], "\n", $i) + 1) > 0 and
+             ($k = index($_[0], "\n", $j) + 1) > 0 and
+             substr($_[0], $i, $k - $i) eq substr($_[1], $i, $k - $i)) {
+        $i = $k;
+      }
+      substr($_[0], 0, $i) = "" if $i;
+      $i
+    }
+    my $merged_fn = $ARGV[0];
+    die "$0: cannot open for a+: $merged_fn\n" if !open F, "+>>", $merged_fn;
+    my $newhist = readhist(\*STDIN);
+    my $newdata = join("", @{sortuniq($newhist)});
+    die "$0: $merged_fn: $!\n" if !seek(F, 0, 2);
+    my $size = tell(F);
+    # Read 1 longer than length($newdata) for stripping at \n# below.
+    my $size_to_read = $size < length($newdata) + 1 ? $ size : length($newdata) + 1;
+    die if $newdata !~ m@\A(#(\d+)\n[^\n]*\n)@;
+    my $newhead = $1;
+    my $newts = $2 + 0;
+    my $need_full_rewrite = 1;
+    if (defined $newts and $size_to_read > 0) {
+      die "$0: $merged_fn: $!\n" if !seek(F, $size - $size_to_read, 0);
+      my $olddata;
+      die "$0: $merged_fn: $!\n" if
+          $size_to_read != read(F, $olddata, $size_to_read);
+      # print STDERR "info: AAA $size $size_to_read ($olddata)\n";
+      # TODO(pts): What if regular shell commands look like #12345 timestamp?
+      $olddata = "" if $size != $size_to_read and $olddata !~ s@\A.*?\n#@#@s;
+      # print STDERR "info: BBB ($olddata)\n";
+      if (length($olddata) > 0 and substr($olddata, -1) eq "\n") {
+        my $j;
+        # TODO(pts): What if regular shell commands look like #12345 timestamp?
+        if (substr($olddata, 0, length($newhead)) eq $newhead) {
+          strip_common_prefix2($newdata, $olddata);
+        } elsif (($j = rindex($olddata, "\n$newhead") + 1) > 0) {
+          strip_common_prefix2($newdata, substr($olddata, $j));
+        }
+        if (0 == length($newdata)) {
+          $need_full_rewrite = 0;
+        } else {  # Now find the last entry in $olddata.
+          die if $newdata !~ m@\A(#(\d+)\n[^\n]*\n)@;
+          $newhead = $1;
+          $newts = $2 + 0;
+          $j = rindex($olddata, "\n", length($olddata) - 2);
+          if ($j >= 0) {
+            my $k = rindex($olddata, "\n", $j - 1) + 1;
+            if ($k > 0) {
+              my $oldtail = substr($olddata, $k);
+              if ($oldtail =~ m@\A#(\d+)\n[^\n]*\n@) {
+                my $oldts = $1 + 0;
+                if ($oldts < $newts or
+                    $oldts == $newts and $oldtail lt $newhead) {
+                  $need_full_rewrite = 0;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    # print STDERR "info: $need_full_rewrite ($newdata)\n";
+    if (!$need_full_rewrite) {  # Shortcut: Just append $newdata to F.
+      if (length($newdata) > 0) {
+        { my $oldf = select(F); $| = 1; select($oldf) }
+        die "$0: $merged_fn: $!\n" if !seek(F, 0, 2);
+        if (print(F $newdata)) {
+          my $new_size = tell(F);
+          if ($new_size == $size + length($newdata)) {
+            $need_full_rewrite = 0;
+            close(F);
+          }
+        }
+      } else {  # Nothing to append.
+        $need_full_rewrite = 0;
+      }
+    }
+    if ($need_full_rewrite) {
+      die "$0: $merged_fn: $!\n" if !seek(F, 0, 0);
+      my $hist = readhist(\*F);
+      push @$hist, @$newhist;
+      my $tmp_fn = "$merged_fn.tmp.$$";
+      unlink $tmp_fn;
+      die "$0: $tmp_fn: $!\n" if !open G, ">", $tmp_fn;
+      if (!print(G @{sortuniq($hist)})) {
+        my $error = "$1";
+        close(G);
+        unlink($tmp_fn);
+        die "$0: $tmp_fn: $error\n";
+      } elsif (!close(G)) {
+        my $error = "$1";
+        unlink($tmp_fn);
+        die "$0: $tmp_fn: $error\n";
+      }
+      my @stat = stat(F);
+      close(F);
+      die if !@stat;
+      # This is for sudo root.
+      # TODO(pts): Add better fix for sudo regular user.
+      chown $stat[4], $stat[5], $tmp_fn;  # Error not checked.
+      chmod $stat[2] & 07777, $tmp_fn;  # Error not checked.
+      # TODO(pts): Do not lose data on concurrent merges and renames.
+      die "$0: rename $tmp_fn to $merged_fn: $1" if
+          !rename($tmp_fn, $merged_fn);
+    }
+  '  -- "$1"
 }
 
 # Read history from $HISTFILE_MRG, 
@@ -64,8 +191,11 @@ function _mrg_rdh() {
   # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
   local HISTTIMEFORMAT=' '
   # TODO(pts): Apply a shortcut if only one line has been appended.
+  #echo AAA
   history -c  # Clear the in-memory history. TODO(pts): Reset counter.
+  #echo BBB
   history -r  # Append the contents of $HISTFILE to the in-memory history.
+  #echo CCC
 }
 
 export -n HISTTIMEFORMAT HISTFILE HISTFILE_MRG
@@ -107,11 +237,23 @@ function _mrg_ec() {
     # the same sequence number as before). SUXX: Prints larger and larger
     # numbers.
     local TMPDIR="${TMPDIR:-/tmp}"
+    local HISTFILE=
+    # SUXX: `history -w' cannot write only a last few lines to the history file,
+    # it writes everything even if we set HISTFILESIZE= to a small value.
+    local HISTFILESIZE=5  # Write only 5 lines. SUXX: No effect.
     local HISTFILE="$TMPDIR/whistory.$UID.$$"
-    local MHISTFILE="$TMPDIR/mhistory.$UID.$$"
+    local HISTFILE_TAIL="$TMPDIR/thistory.$UID.$$"
+    #echo XXX
+    # We can't use `history -a' here, because it forgets everything in the
+    # subsequent `history -r'.
     history -w  # Write to the temporary $HISTFILE .
-    _mrg_merge_ts_history "$HISTFILE_MRG" "$HISTFILE" >"$MHISTFILE"
-    command mv -f -- "$MHISTFILE" "$HISTFILE_MRG"
+    command tail -5 -- <"$HISTFILE" >"$HISTFILE_TAIL"
+    command rm -f -- "$HISTFILE"
+    #echo YYY
+    # wc -l "$HISTFILE_TAIL"
+    _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE_TAIL"
+    #echo ZZZ
+    command rm -f -- "$HISTFILE_TAIL"
   fi
 }
 
