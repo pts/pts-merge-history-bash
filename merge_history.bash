@@ -102,10 +102,10 @@ function _mrg_merge_ts_history() {
       my $olddata;
       die "$0: $merged_fn: $!\n" if
           $size_to_read != read(F, $olddata, $size_to_read);
-      # print STDERR "info: AAA $size $size_to_read ($olddata)\n";
+      #print STDERR "info: AAA $size $size_to_read ($olddata)\n";
       # TODO(pts): What if regular shell commands look like #12345 timestamp?
       $olddata = "" if $size != $size_to_read and $olddata !~ s@\A.*?\n#@#@s;
-      # print STDERR "info: BBB ($olddata)\n";
+      #print STDERR "info: BBB ($olddata)\n";
       if (length($olddata) > 0 and substr($olddata, -1) eq "\n") {
         my $j;
         # TODO(pts): What if regular shell commands look like #12345 timestamp?
@@ -114,6 +114,7 @@ function _mrg_merge_ts_history() {
         } elsif (($j = rindex($olddata, "\n$newhead") + 1) > 0) {
           strip_common_prefix2($newdata, substr($olddata, $j));
         }
+        #print STDERR "info: CCC ($newdata)\n";
         if (0 == length($newdata)) {
           $need_full_rewrite = 0;
         } else {  # Now find the last entry in $olddata.
@@ -121,23 +122,26 @@ function _mrg_merge_ts_history() {
           $newhead = $1;
           $newts = $2 + 0;
           $j = rindex($olddata, "\n", length($olddata) - 2);
+          #print STDERR "info: DDD $newts ($newdata)\n";
           if ($j >= 0) {
             my $k = rindex($olddata, "\n", $j - 1) + 1;
-            if ($k > 0) {
-              my $oldtail = substr($olddata, $k);
-              if ($oldtail =~ m@\A#(\d+)\n[^\n]*\n@) {
-                my $oldts = $1 + 0;
-                if ($oldts < $newts or
-                    $oldts == $newts and $oldtail lt $newhead) {
-                  $need_full_rewrite = 0;
-                }
+            # ($k == 0) here means the beginning of $olddata, which is also fine,
+            # because we have a new entry there.
+            my $oldtail = substr($olddata, $k);
+            #print STDERR "info: EEE $k ($oldtail)\n";
+            if ($oldtail =~ m@\A#(\d+)\n[^\n]*\n@) {
+              my $oldts = $1 + 0;
+              if ($oldts < $newts or
+                  $oldts == $newts and $oldtail lt $newhead) {
+                $need_full_rewrite = 0;
               }
             }
           }
         }
       }
     }
-    # print STDERR "info: $need_full_rewrite ($newdata)\n";
+    #print STDERR "info: $need_full_rewrite ($newdata)\n";
+    #exit;
     if (!$need_full_rewrite) {  # Shortcut: Just append $newdata to F.
       if (length($newdata) > 0) {
         { my $oldf = select(F); $| = 1; select($oldf) }
@@ -188,7 +192,7 @@ function _mrg_merge_ts_history() {
 function _mrg_rdh() {
   test "$HISTFILE_MRG" || return
   local HISTFILE="$HISTFILE_MRG"
-  # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
+  # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
   local HISTTIMEFORMAT=' '
   # TODO(pts): Apply a shortcut if only one line has been appended.
   #echo AAA
@@ -231,29 +235,34 @@ function _mrg_ec() {
   # TODO(pts): Don't screw up the permission of $HISTFILE_MRG when running
   # as root.
   if : 2>/dev/null >>"$HISTFILE_MRG"; then
-    # Make `history -w' prefix "$TIMESTAMP\n" to $HISTFILE
+    # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
     local HISTTIMEFORMAT=' '
     # TODO(pts): Don't save if nothing changed (i.e. `history 1` prints
     # the same sequence number as before). SUXX: Prints larger and larger
     # numbers.
     local TMPDIR="${TMPDIR:-/tmp}"
-    local HISTFILE=
-    # SUXX: `history -w' cannot write only a last few lines to the history file,
-    # it writes everything even if we set HISTFILESIZE= to a small value.
-    local HISTFILESIZE=5  # Write only 5 lines. SUXX: No effect.
     local HISTFILE="$TMPDIR/whistory.$UID.$$"
-    local HISTFILE_TAIL="$TMPDIR/thistory.$UID.$$"
     #echo XXX
-    # We can't use `history -a' here, because it forgets everything in the
-    # subsequent `history -r'.
-    history -w  # Write to the temporary $HISTFILE .
-    command tail -5 -- <"$HISTFILE" >"$HISTFILE_TAIL"
-    command rm -f -- "$HISTFILE"
+    # `history -a' writes only those lines which have been added since the
+    # last `history -r'. Cool, that's exactly what we want, because we want
+    # to write only commands typed to this shell. Usually this `history -a'
+    # writes a single entry (2 lines) only, because there was a recent
+    # `history -r' in _mrg_rdh.
+    #
+    # `history -a' doesn't even create the file if it doesn't want to write
+    # any entries.
+    #echo XXX
+    history -a
     #echo YYY
-    # wc -l "$HISTFILE_TAIL"
-    _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE_TAIL"
-    #echo ZZZ
-    command rm -f -- "$HISTFILE_TAIL"
+    if test -f "$HISTFILE"; then
+      #time command wc -l -- "$HISTFILE"
+      #echo YYY
+      #cp "$HISTFILE_MRG" /tmp/m
+      #cp "$HISTFILE" /tmp/new
+      _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE"
+      #echo ZZZ
+      command rm -f -- "$HISTFILE"
+    fi
   fi
 }
 
