@@ -188,8 +188,15 @@ function _mrg_merge_ts_history() {
   '  -- "$1"
 }
 
-# Read history from $HISTFILE_MRG, 
+# Move cursor to BOL and read history from $HISTFILE_MRG.
 function _mrg_rdh() {
+  # $COLUMNS is initialized by bash to the current number of columns of the
+  # terminal just before $PROMPT_COMMAND gets executed.
+  #
+  # This printf is the trick (similar to what zsh does) which prints an
+  # inverted % and moves the cursor to the beginning of the next line, unless
+  # the cursor is already at the beginning of the line. It works even in mc.
+  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' ' '
   test "$HISTFILE_MRG" || return
   local HISTFILE="$HISTFILE_MRG"
   # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
