@@ -196,7 +196,9 @@ function _mrg_rdh() {
   # This printf is the trick (similar to what zsh does) which prints an
   # inverted % and moves the cursor to the beginning of the next line, unless
   # the cursor is already at the beginning of the line. It works even in mc.
-  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' ' '
+  #
+  # \e[K clears to the end of the line, and fixes copy-paste of spaces at EOL.
+  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
   test "$HISTFILE_MRG" || return
   local HISTFILE="$HISTFILE_MRG"
   # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
