@@ -199,6 +199,14 @@ function _mrg_rdh() {
   #
   # \e[K clears to the end of the line, and fixes copy-paste of spaces at EOL.
   printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
+  test "$MC_TMPDIR" && return
+  _mrg_rdr
+}
+
+function _mrg_rdr() {
+  # _mrg_rdr seems to be slower than _mrg_ec.
+  # TODO(pts): Make _mrg_rdr faster (and re-enable it in mc) by making it check
+  # for a timestamp and a file size, and doing nothing 
   test "$HISTFILE_MRG" || return
   local HISTFILE="$HISTFILE_MRG"
   # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
@@ -209,13 +217,6 @@ function _mrg_rdh() {
   #echo BBB
   history -r  # Append the contents of $HISTFILE to the in-memory history.
   #echo CCC
-  # $COLUMNS is initialized by bash to the current number of columns of the
-  # terminal just before $PROMPT_COMMAND gets executed.
-  #
-  # This printf is the trick (similar to what zsh does) which prints an
-  # inverted % and moves the cursor to the beginning of the next line, unless
-  # the cursor is already at the beginning of the line. It works even in mc.
-  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' ' '
 }
 
 export -n HISTTIMEFORMAT HISTFILE HISTFILE_MRG
@@ -232,13 +233,25 @@ function _mrg_ec() {
   trap '' DEBUG  # Uninstall debug trap.
   test "$HISTFILE_MRG" || return
 
-  if [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* ]] && test "$MC_TMPDIR"; then
-    # Midnight Commander (mc) is trying to override $PROMPT_COMMAND with its
-    # pwd saving and `kill -STOP $$'. We do it,
-    eval "$BASH_COMMAND"  # Set $PROMPT_COMMAND as mc wanted it.
-    _mrg_install_debug_hook  # Prepend our commands to $PROPT_COMMAND.
-    trap _mrg_ec DEBUG
-    return 1  # Don't run the original $BASH_COMMAND.
+  if test "$MC_TMPDIR"; then
+    # Example: COMMAND:cd "`printf "%b" '\0057var\0057cache'`"
+    #echo "COMMAND:$BASH_COMMAND" >>/tmp/cmd.out
+    if [[ "$BASH_COMMAND" = 'cd "`'* ]]; then
+      #echo "A" >>/tmp/cmd.out
+      # Return early, without touching the history file. That's to make
+      # pressing <Enter> to change directories in Midight Commander fast.
+      return  # Run the original $BASH_COMMAND.
+    elif [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* ]]; then
+      _mrg_rdr
+      # Midnight Commander (mc) is trying to override $PROMPT_COMMAND with
+      # its pwd saving and `kill -STOP $$'. We do it, but we set our hook
+      # back to the beginning of $PROMPT_COMMAND.
+      eval "$BASH_COMMAND"  # Set $PROMPT_COMMAND as mc wanted it.
+      _mrg_install_debug_hook  # Prepend our commands to $PROPT_COMMAND.
+      trap _mrg_ec DEBUG
+      return 1  # Don't run the original $BASH_COMMAND.
+    fi
+    #echo "B" >>/tmp/cmd.out
   fi
 
   # TODO(pts): Why is this command run 4 times per pressing <Enter>?
@@ -305,6 +318,10 @@ shopt -s extdebug > /dev/null 2>&1
 # that if bash had support for zsh's `preexec' hook, which is executed just
 # after a command has been read and is about to be executed).
 _mrg_install_debug_hook
+
+# It's too early to do this, lines starting with # would be also loaded.
+# Doing it in _mrg_rdr instead.
+#test "$MC_TMPDIR" && _mrg_rdr
 
 fi  # End of the file's if guard.
 unset MRG_DONEI
