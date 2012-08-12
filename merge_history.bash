@@ -203,15 +203,14 @@ function _mrg_rdh() {
   #
   # \e[K clears to the end of the line, and fixes copy-paste of spaces at EOL.
   printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
-  test "$MC_TMPDIR" && return
+  # test "$MC_TMPDIR" && return  # mc is fast now, no need to skip.
   _mrg_rdr
 }
 
 function _mrg_rdr() {
-  test "$MRG_NOREAD" && return
   # _mrg_rdr seems to be slower than _mrg_ec.
-  # TODO(pts): Make _mrg_rdr faster (and re-enable it in mc) if the size check
-  # made it faster.
+
+  test "$MRG_NOREAD" && return
   test "$HISTFILE_MRG" || return
   local SIZE="$(perl -e 'print -s $ARGV[0]' -- "$HISTFILE_MRG")"
   test "$MRG_LAST_SIZE" = "$SIZE" && return
@@ -251,7 +250,6 @@ function _mrg_ec() {
       # pressing <Enter> to change directories in Midight Commander fast.
       return  # Run the original $BASH_COMMAND.
     elif [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* ]]; then
-      _mrg_rdr
       # Midnight Commander (mc) is trying to override $PROMPT_COMMAND with
       # its pwd saving and `kill -STOP $$'. We do it, but we set our hook
       # back to the beginning of $PROMPT_COMMAND.
@@ -339,7 +337,6 @@ MRG_LAST_SIZE=
 _mrg_install_debug_hook
 
 # It's too early to do this, lines starting with # would be also loaded.
-# Doing it in _mrg_rdr instead.
 #test "$MC_TMPDIR" && _mrg_rdr
 
 fi  # End of the file's if guard.
