@@ -91,8 +91,10 @@ function _mrg_merge_ts_history() {
     my $newdata = join("", @{sortuniq($newhist)});
     die "$0: $merged_fn: $!\n" if !seek(F, 0, 2);
     my $size = tell(F);
+    # This is outdated, it assumed that $newdata has a copy of the tail of $olddata.
     # Read 1 longer than length($newdata) for stripping at \n# below.
-    my $size_to_read = $size < length($newdata) + 1 ? $ size : length($newdata) + 1;
+    # my $size_to_read = $size < length($newdata) + 1 ? $ size : length($newdata) + 1;
+    my $size_to_read = $size < 4096 ? $size : 4096;
     die if $newdata !~ m@\A(#(\d+)\n[^\n]*\n)@;
     my $newhead = $1;
     my $newts = $2 + 0;
@@ -143,6 +145,7 @@ function _mrg_merge_ts_history() {
     #print STDERR "info: $need_full_rewrite ($newdata)\n";
     #exit;
     if (!$need_full_rewrite) {  # Shortcut: Just append $newdata to F.
+      $need_full_rewrite = 1;
       if (length($newdata) > 0) {
         { my $oldf = select(F); $| = 1; select($oldf) }
         die "$0: $merged_fn: $!\n" if !seek(F, 0, 2);
@@ -157,6 +160,7 @@ function _mrg_merge_ts_history() {
         $need_full_rewrite = 0;
       }
     }
+    #print STDERR "info: $need_full_rewrite BX\n";
     if ($need_full_rewrite) {
       die "$0: $merged_fn: $!\n" if !seek(F, 0, 0);
       my $hist = readhist(\*F);
@@ -204,6 +208,7 @@ function _mrg_rdh() {
 }
 
 function _mrg_rdr() {
+  test "$MRG_NOREAD" && return
   # _mrg_rdr seems to be slower than _mrg_ec.
   # TODO(pts): Make _mrg_rdr faster (and re-enable it in mc) by making it check
   # for a timestamp and a file size, and doing nothing 
@@ -288,6 +293,8 @@ function _mrg_ec() {
       #echo YYY
       #cp "$HISTFILE_MRG" /tmp/m
       #cp "$HISTFILE" /tmp/new
+      #ls -l "$HISTFILE_MRG" "$HISTFILE"
+      #time _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE"
       _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE"
       #echo ZZZ
       command rm -f -- "$HISTFILE"
