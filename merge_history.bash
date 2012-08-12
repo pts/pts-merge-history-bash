@@ -210,9 +210,13 @@ function _mrg_rdh() {
 function _mrg_rdr() {
   test "$MRG_NOREAD" && return
   # _mrg_rdr seems to be slower than _mrg_ec.
-  # TODO(pts): Make _mrg_rdr faster (and re-enable it in mc) by making it check
-  # for a timestamp and a file size, and doing nothing 
+  # TODO(pts): Make _mrg_rdr faster (and re-enable it in mc) if the size check
+  # made it faster.
   test "$HISTFILE_MRG" || return
+  local SIZE="$(perl -e 'print -s $ARGV[0]' -- "$HISTFILE_MRG")"
+  test "$MRG_LAST_SIZE" = "$SIZE" && return
+  MRG_LAST_SIZE="$SIZE"
+  
   local HISTFILE="$HISTFILE_MRG"
   # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
   local HISTTIMEFORMAT=' '
@@ -296,6 +300,12 @@ function _mrg_ec() {
       #ls -l "$HISTFILE_MRG" "$HISTFILE"
       #time _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE"
       _mrg_merge_ts_history "$HISTFILE_MRG" <"$HISTFILE"
+      # TODO(pts): try other, Linux-specific options (for speed):
+      # stat -c %s "$HISTFILE_MRG"
+      # du -b "$HISTFILE_MRG"
+      # #wc -c "$HISTFILE_MRG"  # Don't try, it reads the file.
+      # TODO(pts): Fix elsewhere.
+      MRG_LAST_SIZE="$(perl -e 'print -s $ARGV[0]' -- "$HISTFILE_MRG")"
       #echo ZZZ
       command rm -f -- "$HISTFILE"
     fi
@@ -320,6 +330,8 @@ trap _mrg_ec DEBUG"
 # Set these both so hook_at_debug gets called in a subshell.
 set -o functrace > /dev/null 2>&1
 shopt -s extdebug > /dev/null 2>&1
+
+MRG_LAST_SIZE=
 
 # As a side effect, we install our own debug hook. We wouldn't have to do
 # that if bash had support for zsh's `preexec' hook, which is executed just
