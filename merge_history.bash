@@ -12,6 +12,8 @@
 # * Run this: touch ~/.merged_bash_history
 # * Put (append) this to your ~/.bashrc: source "$HOME"/merge_history.bash
 # * Set HISTSIZE and HISTFILESIZE to large enough values in your ~/.bashrc .
+#   (Even though the history file contains all previously issued commands,
+#   only that many lines will be loaded by bash.)
 # * Close all your terminal windows (and SSH connections) and open new ones
 #   to make the changes take effect.
 # * If you want your old shell history to be reused, please copy
@@ -24,6 +26,7 @@
 # It's safe to reload this file by `source'-ing it to an existing bash.
 #
 # TODO(pts): Add support for multiline commands.
+# TODO(pts): Diagnose why it stops adding to the log at some point.
 
 MRG_DONEI=":$SHELLOPTS:"
 if test "${MRG_DONEI#*:history:}" != "$MRG_DONEI" &&
@@ -202,9 +205,9 @@ function _mrg_rdh() {
   # the cursor is already at the beginning of the line. It works even in mc.
   #
   # \e[K clears to the end of the line, and fixes copy-paste of spaces at EOL.
-  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
   # test "$MC_TMPDIR" && return  # mc is fast now, no need to skip.
   _mrg_rdr
+  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
 }
 
 function _mrg_rdr() {
