@@ -237,22 +237,27 @@ unset HISTTIMEFORMAT
 HISTFILE_MRG="$HOME/.merged_bash_history"
 history -c  # Discard the current history, whatever it was.
 
+# Extend the $HISTFILE_MRG files with new commands encountered since the
+# last call.
+#
 # Called in `trap _mrg_ec DEBUG' in `extdebug' mode, before each shell
 # command to be executed.
 function _mrg_ec() {
   test "$COMP_LINE" && return  # Within the completer.
   trap '' DEBUG  # Uninstall debug trap.
   test "$HISTFILE_MRG" || return
+  # Ignore the first command of $PROMPT_COMMAND.
+  test "$BASH_COMMAND" = "trap '''' DEBUG" && return
 
   if test "$MC_TMPDIR"; then
     # Example: COMMAND:cd "`printf "%b" '\0057var\0057cache'`"
     #echo "COMMAND:$BASH_COMMAND" >>/tmp/cmd.out
-    if [[ "$BASH_COMMAND" = 'cd "`'* ]]; then
+    if [[ "$BASH_COMMAND" = 'cd "`'* || "$BASH_COMMAND" = ' cd "`'* ]]; then
       #echo "A" >>/tmp/cmd.out
       # Return early, without touching the history file. That's to make
       # pressing <Enter> to change directories in Midight Commander fast.
       return  # Run the original $BASH_COMMAND.
-    elif [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* ]]; then
+    elif [[ "$BASH_COMMAND" = "PROMPT_COMMAND='pwd>"* || "$BASH_COMMAND" = " PROMPT_COMMAND='pwd>"* ]]; then
       # Midnight Commander (mc) is trying to override $PROMPT_COMMAND with
       # its pwd saving and `kill -STOP $$'. We do it, but we set our hook
       # back to the beginning of $PROMPT_COMMAND.
@@ -274,7 +279,7 @@ function _mrg_ec() {
   # TODO(pts): Don't screw up the permission of $HISTFILE_MRG when running
   # as root.
   if : 2>/dev/null >>"$HISTFILE_MRG"; then
-    # Make `history -w' and `history -a' add prefix "$TIMESTAMP\n" to $HISTFILE.
+    # Make `history -w' and `history -a' add prefix "#$TIMESTAMP\n" to $HISTFILE.
     local HISTTIMEFORMAT=' '
     # TODO(pts): Don't save if nothing changed (i.e. `history 1` prints
     # the same sequence number as before). SUXX: Prints larger and larger
@@ -292,6 +297,7 @@ function _mrg_ec() {
     # any entries.
     #echo XXX
     history -a
+    #echo "[[["; cat -- "$HISTFILE"; echo "]]]"
     #echo YYY
     if test -f "$HISTFILE"; then
       #time command wc -l -- "$HISTFILE"
@@ -314,6 +320,10 @@ function _mrg_ec() {
 }
 
 function _mrg_install_debug_hook() {
+  # Disable bash_preexec.sh and skippy.sh.
+  # Example by bash_preexec.sh: PROMPT_COMMAND='__bp_trap_string=$(trap -p DEBUG); trap DEBUG; __bp_install'
+  [[ "$PROMPT_COMMAND" = '__bp_'*'; __bp_install' ]] && PROMPT_COMMAND=
+
   # Remove previous hook installed by _mrg_install_debug_hook .
   #
   # TODO(pts): Remove old versions more smartly, by detecting delimiters.
@@ -324,13 +334,14 @@ trap _mrg_ec DEBUG}"
   # We want to run `trap _mrg_ec DEBUG' in $PROMPT_COMMAND as late as
   # possible so that the debug hook (_mrg_ec) won't be executed on the rest
   # of $PROMPT_COMMAND, but it will be executed at the user command.
-  PROMPT_COMMAND="trap '' DEBUG; _mrg_rdh; $PROMPT_COMMAND
+  PROMPT_COMMAND="trap '''' DEBUG; _mrg_rdh; $PROMPT_COMMAND
 trap _mrg_ec DEBUG"
 }
 
-# Set these both so hook_at_debug gets called in a subshell.
-set -o functrace > /dev/null 2>&1
-shopt -s extdebug > /dev/null 2>&1
+# set -o functrace >/dev/null 2>&1
+shopt -s extdebug >/dev/null 2>&1
+set +o functrace  >/dev/null 2>&1  # Unset if set by extdebug.
+set +o errtrace   >/dev/null 2>&1  # Unset if set by extdebug.
 
 MRG_LAST_SIZE=
 
