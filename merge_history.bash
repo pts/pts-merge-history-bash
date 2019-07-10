@@ -207,7 +207,7 @@ function _mrg_rdh() {
   # \e[K clears to the end of the line, and fixes copy-paste of spaces at EOL.
   # test "$MC_TMPDIR" && return  # mc is fast now, no need to skip.
   _mrg_rdr
-  printf %s%${COLUMNS}s%s '[0;7m%[0m' '' '[K'
+  printf %s%${COLUMNS}s%s $'\e[0;7m%\e[0m' $'\r' $'\e[K'
 }
 
 function _mrg_rdr() {
